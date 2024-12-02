@@ -1,6 +1,9 @@
+from django.contrib.auth.decorators import login_required
+from django.http import Http404
 from django.shortcuts import render, redirect, get_object_or_404, reverse
 from django.views import generic
 from django.urls import reverse_lazy
+from django.contrib.auth.mixins import LoginRequiredMixin
 
 from .forms import PostForm
 from .models import BlogPost
@@ -21,16 +24,33 @@ class BlogPostDetailView(generic.DetailView):
     context_object_name = 'post'
 
 
-class BlogPostCreateView(generic.CreateView):
-    form_class = PostForm
-    template_name = 'blog/create_post.html'
-
-
-class BlogPostUpdateView(generic.UpdateView):
+class BlogPostCreateView(LoginRequiredMixin, generic.CreateView):
     model = BlogPost
-    form_class = PostForm
-    # fields = ['title', 'text', 'author', 'status']
+    fields = ['title', 'text', 'status']
     template_name = 'blog/create_post.html'
+
+    def form_valid(self, form):
+        # Assign the logged-in user to the post before saving
+        form.instance.author = self.request.user
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse_lazy('post_detail', kwargs={'pk': self.object.pk})
+
+
+class BlogPostUpdateView(LoginRequiredMixin, generic.UpdateView):
+    model = BlogPost
+    fields = ['title', 'text', 'status']
+    template_name = 'blog/create_post.html'
+
+    def get_object(self, queryset=None):
+        post = super().get_object(queryset)
+        if post.author != self.request.user:
+            raise Http404("You are not authorized to edit this post.")
+        return post
+
+    def get_success_url(self):
+        return reverse_lazy('post_detail', kwargs={'pk': self.object.pk})
 
 
 class BlogPostDeleteView(generic.DeleteView):
@@ -38,9 +58,11 @@ class BlogPostDeleteView(generic.DeleteView):
     template_name = 'blog/post_delete.html'
     success_url = reverse_lazy('posts_list')
 
-    # def get_success_url(self):
-    #     return reverse('posts_list')
-
+    def get_object(self, queryset=None):
+        post = super().get_object(queryset)
+        if post.author != self.request.user:
+            raise Http404("You are not authorized to delete this post.")
+        return post
 
 # def blog_post_view(request):
 #     # posts = BlogPost.objects.all()
